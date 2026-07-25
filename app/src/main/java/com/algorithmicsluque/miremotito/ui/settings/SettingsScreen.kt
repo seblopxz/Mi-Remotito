@@ -57,6 +57,26 @@ fun SettingsScreen(
                     }
                 )
                 ExpressiveListItem(
+                    position = ListItemPosition.MIDDLE,
+                    content = {
+                        Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                            Text(
+                                text = "Dirección IP de la Raspberry Pi",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Bold
+                            )
+                            OutlinedTextField(
+                                value = uiState.serverUrl,
+                                onValueChange = { viewModel.updateServerUrl(it) },
+                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                placeholder = { Text("http://192.168.1.100:5000/") },
+                                singleLine = true,
+                                shape = MaterialTheme.shapes.medium
+                            )
+                        }
+                    }
+                )
+                ExpressiveListItem(
                     position = ListItemPosition.LAST,
                     onClick = onNavigateToAbout,
                     content = {

@@ -8,20 +8,30 @@ import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.algorithmicsluque.miremotito.data.repository.SettingsRepository
 import com.algorithmicsluque.miremotito.ui.home.HomeScreen
 import com.algorithmicsluque.miremotito.ui.home.HomeViewModel
 import com.algorithmicsluque.miremotito.ui.remote.RemoteScreen
 import com.algorithmicsluque.miremotito.ui.remote.RemoteViewModel
 import com.algorithmicsluque.miremotito.ui.settings.*
 import com.algorithmicsluque.miremotito.ui.setup.AddChoiceSheet
+import com.algorithmicsluque.miremotito.ui.setup.AddGroupSheet
 import com.algorithmicsluque.miremotito.ui.setup.SetupFlow
+import com.algorithmicsluque.miremotito.ui.setup.SetupViewModel
 import com.algorithmicsluque.miremotito.ui.theme.MiRemotitoTheme
 import com.algorithmicsluque.miremotito.ui.updates.BetaUpdatesScreen
 import com.algorithmicsluque.miremotito.ui.updates.UpdateFlow
@@ -33,7 +43,12 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             MiRemotitoTheme {
-                RemotitoApp()
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.surface
+                ) {
+                    RemotitoApp()
+                }
             }
         }
     }
@@ -41,6 +56,9 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun RemotitoApp() {
+    val context = LocalContext.current
+    val settingsRepository = remember { SettingsRepository(context) }
+    val apiService = remember { com.algorithmicsluque.miremotito.data.network.NetworkModule.provideRetrofit(settingsRepository) }
     val navController = rememberNavController()
     
     NavHost(
@@ -49,31 +67,40 @@ fun RemotitoApp() {
         enterTransition = {
             slideIntoContainer(
                 AnimatedContentTransitionScope.SlideDirection.Left,
-                animationSpec = tween(200)
-            ) + fadeIn(animationSpec = tween(200))
+                animationSpec = tween(150)
+            ) + fadeIn(animationSpec = tween(150))
         },
         exitTransition = {
             slideOutOfContainer(
                 AnimatedContentTransitionScope.SlideDirection.Left,
-                animationSpec = tween(200)
-            ) + fadeOut(animationSpec = tween(200))
+                animationSpec = tween(150)
+            ) + fadeOut(animationSpec = tween(150))
         },
         popEnterTransition = {
             slideIntoContainer(
                 AnimatedContentTransitionScope.SlideDirection.Right,
-                animationSpec = tween(200)
-            ) + fadeIn(animationSpec = tween(200))
+                animationSpec = tween(150)
+            ) + fadeIn(animationSpec = tween(150))
         },
         popExitTransition = {
             slideOutOfContainer(
                 AnimatedContentTransitionScope.SlideDirection.Right,
-                animationSpec = tween(200)
-            ) + fadeOut(animationSpec = tween(200))
+                animationSpec = tween(150)
+            ) + fadeOut(animationSpec = tween(150))
         }
     ) {
         composable("home") {
             val homeViewModel: HomeViewModel = viewModel()
+            val setupViewModel: SetupViewModel = viewModel(
+                factory = object : ViewModelProvider.Factory {
+                    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                        return SetupViewModel(apiService) as T
+                    }
+                }
+            )
+            val setupUiState by setupViewModel.uiState.collectAsState()
             var showAddChoice by remember { mutableStateOf(false) }
+            var showAddGroup by remember { mutableStateOf(false) }
             
             HomeScreen(
                 viewModel = homeViewModel,
@@ -94,8 +121,24 @@ fun RemotitoApp() {
                         showAddChoice = false
                         navController.navigate("add_remote")
                     },
-                    onAddGroup = { /* TODO */ },
+                    onAddGroup = {
+                        showAddChoice = false
+                        showAddGroup = true
+                    },
                     onDismiss = { showAddChoice = false }
+                )
+            }
+
+            if (showAddGroup) {
+                AddGroupSheet(
+                    newGroupName = setupUiState.newGroupName,
+                    defaultGroups = setupViewModel.defaultGroups,
+                    onGroupNameChanged = { setupViewModel.onGroupNameChanged(it) },
+                    onAddGroup = {
+                        setupViewModel.createGroup()
+                        showAddGroup = false
+                    },
+                    onDismiss = { showAddGroup = false }
                 )
             }
         }
@@ -105,7 +148,13 @@ fun RemotitoApp() {
             arguments = listOf(navArgument("deviceId") { type = NavType.StringType })
         ) { backStackEntry ->
             val deviceId = backStackEntry.arguments?.getString("deviceId") ?: ""
-            val remoteViewModel: RemoteViewModel = viewModel()
+            val remoteViewModel: RemoteViewModel = viewModel(
+                factory = object : ViewModelProvider.Factory {
+                    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                        return RemoteViewModel(apiService) as T
+                    }
+                }
+            )
             RemoteScreen(
                 deviceId = deviceId,
                 viewModel = remoteViewModel,
@@ -121,7 +170,13 @@ fun RemotitoApp() {
         }
 
         composable("settings") {
-            val settingsViewModel: SettingsViewModel = viewModel()
+            val settingsViewModel: SettingsViewModel = viewModel(
+                factory = object : ViewModelProvider.Factory {
+                    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                        return SettingsViewModel(settingsRepository) as T
+                    }
+                }
+            )
             SettingsScreen(
                 viewModel = settingsViewModel,
                 onNavigateToAbout = { navController.navigate("about") },
@@ -130,19 +185,40 @@ fun RemotitoApp() {
         }
 
         composable("about") {
-            val settingsViewModel: SettingsViewModel = viewModel()
+            val settingsViewModel: SettingsViewModel = viewModel(
+                factory = object : ViewModelProvider.Factory {
+                    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                        return SettingsViewModel(settingsRepository) as T
+                    }
+                }
+            )
             var showChangelog by remember { mutableStateOf(false) }
             
             AboutScreen(
                 viewModel = settingsViewModel,
                 onNavigateToChangelog = { showChangelog = true },
                 onNavigateToUpdates = { navController.navigate("updates") },
+                onNavigateToBugReport = { navController.navigate("bug_report") },
                 onBack = { navController.popBackStack() }
             )
 
             if (showChangelog) {
                 ChangelogSheet(onDismiss = { showChangelog = false })
             }
+        }
+
+        composable("bug_report") {
+            val settingsViewModel: SettingsViewModel = viewModel(
+                factory = object : ViewModelProvider.Factory {
+                    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                        return SettingsViewModel(settingsRepository) as T
+                    }
+                }
+            )
+            BugReportScreen(
+                viewModel = settingsViewModel,
+                onBack = { navController.popBackStack() }
+            )
         }
 
         composable("updates") {
@@ -160,6 +236,7 @@ fun RemotitoApp() {
         
         composable("add_remote") {
             SetupFlow(
+                apiService = apiService,
                 onFinished = { navController.popBackStack() },
                 onBack = { navController.popBackStack() }
             )

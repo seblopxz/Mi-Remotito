@@ -44,6 +44,7 @@ fun AboutScreen(
     viewModel: SettingsViewModel,
     onNavigateToChangelog: () -> Unit,
     onNavigateToUpdates: () -> Unit,
+    onNavigateToBugReport: () -> Unit,
     onBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -123,7 +124,7 @@ fun AboutScreen(
                     }
                     ExpressiveListItem(
                         position = ListItemPosition.LAST,
-                        onClick = { /* Navigate to Bug Report */ }
+                        onClick = onNavigateToBugReport
                     ) {
                         Icon(imageVector = Icons.Rounded.BugReport, contentDescription = null)
                         Text(text = "Reportar un bug", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)

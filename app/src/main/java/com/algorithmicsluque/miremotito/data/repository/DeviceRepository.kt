@@ -41,6 +41,15 @@ object DeviceRepository {
     fun deleteDevice(deviceId: String) {
         _devices.value = _devices.value.filterNot { it.id == deviceId }
     }
+
+    private val _rooms = MutableStateFlow(listOf("SALA DE ESTAR", "HABITACIÓN PRINCIPAL", "COCINA", "OFICINA"))
+    val availableRooms: StateFlow<List<String>> = _rooms.asStateFlow()
+
+    fun addGroup(name: String) {
+        if (name.isNotBlank() && !_rooms.value.contains(name.uppercase())) {
+            _rooms.value = _rooms.value + name.uppercase()
+        }
+    }
     
-    fun getAvailableRooms(): List<String> = listOf("SALA DE ESTAR", "HABITACIÓN PRINCIPAL", "COCINA", "OFICINA")
+    fun getAvailableRooms(): List<String> = _rooms.value
 }

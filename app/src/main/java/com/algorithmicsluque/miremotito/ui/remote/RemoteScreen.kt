@@ -5,19 +5,20 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.VolumeOff
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.algorithmicsluque.miremotito.data.models.DeviceType
 import com.algorithmicsluque.miremotito.data.models.RemoteCommand
 import com.algorithmicsluque.miremotito.ui.components.*
+import com.algorithmicsluque.miremotito.ui.remote.components.AcControls
+import com.algorithmicsluque.miremotito.ui.remote.components.TvControls
 import com.algorithmicsluque.miremotito.ui.theme.FullRoundedShape
-import com.algorithmicsluque.miremotito.ui.theme.MiRemotitoTheme
 import com.algorithmicsluque.miremotito.ui.theme.RemoteSurfaceShape
 
 @Composable
@@ -28,12 +29,30 @@ fun RemoteScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var showDetailsSheet by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(deviceId) {
         viewModel.setDevice(deviceId)
     }
 
+    // Mostrar errores en Snackbar
+    LaunchedEffect(uiState.errorMessage) {
+        uiState.errorMessage?.let { message ->
+            val result = snackbarHostState.showSnackbar(
+                message = message,
+                actionLabel = "Reintentar",
+                duration = SnackbarDuration.Long
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                // El usuario decidió reintentar manualmente (los comandos no tienen auto-retry)
+                // Por simplicidad en este MVP, borramos el error para que intente de nuevo el siguiente toque
+                viewModel.clearError()
+            }
+        }
+    }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             RemotitoAppBar(
                 title = uiState.device?.name ?: "",
@@ -49,20 +68,42 @@ fun RemoteScreen(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding),
+                .padding(padding)
+                .alpha(if (uiState.isLoading || !uiState.isConnected) 0.6f else 1f),
             horizontalAlignment = Alignment.CenterHorizontally,
             contentPadding = PaddingValues(bottom = 40.dp)
         ) {
+            if (!uiState.isConnected) {
+                item {
+                    Surface(
+                        modifier = Modifier.padding(16.dp),
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Text(
+                            text = "Raspberry Pi fuera de línea. Intentando reconectar...",
+                            modifier = Modifier.padding(16.dp),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    }
+                }
+            }
+            
             item {
-                RemoteBody(
-                    onCommand = { viewModel.sendCommand(it) }
+                RemoteContainer(
+                    deviceType = uiState.device?.type ?: DeviceType.TV,
+                    onCommand = { if (uiState.isConnected) viewModel.sendCommand(it) }
                 )
             }
-            item {
-                Spacer(modifier = Modifier.height(20.dp))
-                AppShortcutsSection(
-                    onAppClick = { viewModel.sendCommand(RemoteCommand.OPEN_APP, it) }
-                )
+            
+            if (uiState.device?.type == DeviceType.TV || uiState.device?.type == DeviceType.APPLE_TV) {
+                item {
+                    Spacer(modifier = Modifier.height(20.dp))
+                    AppShortcutsSection(
+                        onAppClick = { viewModel.sendCommand(RemoteCommand.OPEN_APP, it) }
+                    )
+                }
             }
         }
     }
@@ -87,7 +128,8 @@ fun RemoteScreen(
 }
 
 @Composable
-fun RemoteBody(
+fun RemoteContainer(
+    deviceType: DeviceType,
     onCommand: (RemoteCommand) -> Unit
 ) {
     Surface(
@@ -102,24 +144,22 @@ fun RemoteBody(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(30.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Header: Siri and Power
+            // Header: Siri/Assistant and Power (Común a todos)
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().padding(bottom = 32.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 RemoteButton(
-                    icon = Icons.Rounded.Mic,
+                    icon = if (deviceType == DeviceType.AC) Icons.Rounded.AcUnit else Icons.Rounded.Mic,
                     onClick = { onCommand(RemoteCommand.SIRI) },
                     size = 70.dp,
                     containerColor = MaterialTheme.colorScheme.tertiaryContainer,
                     contentColor = MaterialTheme.colorScheme.onTertiaryContainer
                 )
                 
-                // Active indicator bar
                 Box(
                     modifier = Modifier
                         .width(30.dp)
@@ -136,51 +176,13 @@ fun RemoteBody(
                 )
             }
 
-            // DPad
-            DPad(
-                onUp = { onCommand(RemoteCommand.UP) },
-                onDown = { onCommand(RemoteCommand.DOWN) },
-                onLeft = { onCommand(RemoteCommand.LEFT) },
-                onRight = { onCommand(RemoteCommand.RIGHT) },
-                onOk = { onCommand(RemoteCommand.OK) }
-            )
-
-            // Basic Controls: Back and Home
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                RemoteButton(
-                    icon = Icons.Rounded.ArrowBackIosNew,
-                    onClick = { onCommand(RemoteCommand.BACK) }
-                )
-                RemoteButton(
-                    icon = Icons.Rounded.Home,
-                    onClick = { onCommand(RemoteCommand.HOME) }
-                )
-            }
-
-            // Media and Volume
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Bottom
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                    RemoteButton(
-                        icon = Icons.Rounded.PlayArrow,
-                        onClick = { onCommand(RemoteCommand.PLAY_PAUSE) }
-                    )
-                    RemoteButton(
-                        icon = Icons.AutoMirrored.Rounded.VolumeOff,
-                        onClick = { onCommand(RemoteCommand.MUTE) }
-                    )
+            // Cuerpo Adaptativo
+            Box(modifier = Modifier.weight(1f)) {
+                when (deviceType) {
+                    DeviceType.TV, DeviceType.APPLE_TV, DeviceType.MONITOR -> TvControls(onCommand)
+                    DeviceType.AC, DeviceType.FAN -> AcControls(onCommand)
+                    else -> TvControls(onCommand) // Fallback
                 }
-                
-                RemotePillButton(
-                    onPlusClick = { onCommand(RemoteCommand.VOL_UP) },
-                    onMinusClick = { onCommand(RemoteCommand.VOL_DOWN) }
-                )
             }
         }
     }
@@ -238,17 +240,5 @@ fun AppIcon(name: String, onClick: () -> Unit) {
         Box(contentAlignment = Alignment.Center) {
             Icon(Icons.Rounded.Apps, contentDescription = name, tint = Color.White)
         }
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun RemoteScreenPreview() {
-    MiRemotitoTheme {
-        RemoteScreen(
-            deviceId = "1",
-            viewModel = RemoteViewModel(),
-            onBackClick = {}
-        )
     }
 }

@@ -4,10 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.algorithmicsluque.miremotito.data.models.Room
 import com.algorithmicsluque.miremotito.data.repository.DeviceRepository
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.*
 
 data class HomeUiState(
     val rooms: List<Room> = emptyList(),
@@ -15,14 +12,16 @@ data class HomeUiState(
 )
 
 class HomeViewModel : ViewModel() {
-    val uiState: StateFlow<HomeUiState> = DeviceRepository.devices
-        .map { devices ->
-            val rooms = devices.groupBy { it.roomName }
-                .map { (roomName, roomDevices) ->
-                    Room(roomName, roomDevices)
-                }
-            HomeUiState(rooms = rooms)
-        }
+    val uiState: StateFlow<HomeUiState> = combine(
+        DeviceRepository.devices,
+        DeviceRepository.availableRooms
+    ) { devices, availableRooms ->
+        val roomsWithDevices = devices.groupBy { it.roomName }
+        val allRooms = availableRooms.map { roomName ->
+            Room(roomName, roomsWithDevices[roomName] ?: emptyList())
+        }.filter { it.devices.isNotEmpty() }
+        HomeUiState(rooms = allRooms)
+    }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),

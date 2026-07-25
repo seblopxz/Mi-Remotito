@@ -3,19 +3,33 @@ package com.algorithmicsluque.miremotito.ui.setup
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.algorithmicsluque.miremotito.data.network.RemoteApiService
 
 @Composable
 fun SetupFlow(
+    apiService: RemoteApiService? = null,
     onFinished: () -> Unit,
     onBack: () -> Unit
 ) {
-    val viewModel: SetupViewModel = viewModel()
+    val viewModel: SetupViewModel = viewModel(
+        factory = object : ViewModelProvider.Factory {
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                return SetupViewModel(apiService) as T
+            }
+        }
+    )
     val uiState by viewModel.uiState.collectAsState()
 
     when (uiState.currentStep) {
         is SetupStep.AddDevice -> {
             AddDeviceScreen(
+                searchQuery = uiState.searchQuery,
+                onSearchQueryChanged = { viewModel.onSearchQueryChanged(it) },
+                filteredBrands = uiState.filteredBrands,
+                filteredDeviceTypes = uiState.filteredDeviceTypes,
                 onTypeSelected = { 
                     viewModel.onTypeSelected(it)
                     viewModel.onStepChanged(SetupStep.Brands) 

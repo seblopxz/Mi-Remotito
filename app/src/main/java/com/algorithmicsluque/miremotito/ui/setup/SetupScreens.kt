@@ -4,21 +4,26 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.*
+import androidx.compose.material3.carousel.CarouselItemScope
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.automirrored.rounded.Send
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.material3.carousel.HorizontalMultiBrowseCarousel
 import androidx.compose.material3.carousel.rememberCarouselState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import com.algorithmicsluque.miremotito.ui.components.ExpressiveListItem
 import com.algorithmicsluque.miremotito.ui.components.IconSelector
 import com.algorithmicsluque.miremotito.ui.components.ListItemPosition
@@ -28,18 +33,14 @@ import com.algorithmicsluque.miremotito.ui.theme.FlowerShape
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddDeviceScreen(
+    searchQuery: String,
+    onSearchQueryChanged: (String) -> Unit,
+    filteredBrands: List<BrandInfo>,
+    filteredDeviceTypes: List<DeviceTypeInfo>,
     onTypeSelected: (com.algorithmicsluque.miremotito.data.models.DeviceType) -> Unit,
     onBrandSelected: (String) -> Unit,
     onBack: () -> Unit
 ) {
-    var searchQuery by remember { mutableStateOf("") }
-    val brands = listOf(
-        "SAMSUNG" to MaterialTheme.colorScheme.primaryContainer,
-        "Apple" to MaterialTheme.colorScheme.surfaceVariant,
-        "LG" to MaterialTheme.colorScheme.secondaryContainer,
-        "Sony" to MaterialTheme.colorScheme.tertiaryContainer
-    )
-    
     Scaffold(
         topBar = {
             RemotitoAppBar(title = "Nuevo control", onBackClick = onBack)
@@ -61,39 +62,58 @@ fun AddDeviceScreen(
             }
             
             item {
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    placeholder = { Text("Tipo de dispositivo o marca") },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(28.dp),
-                    trailingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
-                    singleLine = true
-                )
-            }
-            
-            item {
-                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Text(
-                        text = "MARCAS POPULARES",
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold
+                Column {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = onSearchQueryChanged,
+                        placeholder = { Text("Tipo de dispositivo o marca") },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(28.dp),
+                        trailingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+                        singleLine = true
                     )
                     
-                    HorizontalMultiBrowseCarousel(
-                        state = rememberCarouselState { brands.size },
-                        preferredItemWidth = 180.dp,
-                        itemSpacing = 12.dp,
-                        contentPadding = PaddingValues(horizontal = 0.dp),
-                        modifier = Modifier.fillMaxWidth().height(120.dp)
-                    ) { index ->
-                        val (name, color) = brands[index]
-                        BrandCard(
-                            name = if (name == "SAMSUNG") name else null,
-                            icon = if (name == "Apple") Icons.Rounded.Devices else null,
-                            color = color,
-                            onClick = { onBrandSelected(name) }
+                    if (searchQuery.isNotEmpty() && filteredBrands.isEmpty() && filteredDeviceTypes.isEmpty()) {
+                        Text(
+                            text = "No encontramos resultados para \"$searchQuery\"",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 16.dp, start = 16.dp)
                         )
+                    }
+                }
+            }
+            
+            if (filteredBrands.isNotEmpty()) {
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Text(
+                            text = "MARCAS POPULARES",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        
+                        HorizontalMultiBrowseCarousel(
+                            state = rememberCarouselState { filteredBrands.size },
+                            preferredItemWidth = 180.dp,
+                            itemSpacing = 12.dp,
+                            contentPadding = PaddingValues(horizontal = 0.dp),
+                            modifier = Modifier.fillMaxWidth().height(120.dp)
+                        ) { index ->
+                            val brand = filteredBrands[index]
+                            val containerColors = listOf(
+                                MaterialTheme.colorScheme.primaryContainer,
+                                MaterialTheme.colorScheme.secondaryContainer,
+                                MaterialTheme.colorScheme.tertiaryContainer
+                            )
+                            BrandCard(
+                                name = brand.name,
+                                icon = brand.icon,
+                                imageRes = brand.imageRes,
+                                color = containerColors[index % containerColors.size],
+                                onClick = { onBrandSelected(brand.name) }
+                            )
+                        }
                     }
                 }
             }
@@ -105,30 +125,70 @@ fun AddDeviceScreen(
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold
                     )
-                    val deviceTypes = listOf(
-                        "TV" to Icons.Rounded.Tv to com.algorithmicsluque.miremotito.data.models.DeviceType.TV,
-                        "Ventilador" to Icons.Rounded.Air to com.algorithmicsluque.miremotito.data.models.DeviceType.FAN,
-                        "Barra de Sonido" to Icons.Rounded.Speaker to com.algorithmicsluque.miremotito.data.models.DeviceType.AUDIO
-                    )
                     
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        deviceTypes.forEachIndexed { index, pair ->
-                            val (info, type) = pair
-                            val (label, icon) = info
+                        filteredDeviceTypes.forEachIndexed { index, deviceTypeInfo ->
                             val position = when (index) {
-                                0 -> ListItemPosition.FIRST
-                                deviceTypes.size - 1 -> ListItemPosition.LAST
+                                0 -> if (filteredDeviceTypes.size == 1) ListItemPosition.SINGLE else ListItemPosition.FIRST
+                                filteredDeviceTypes.size - 1 -> ListItemPosition.LAST
                                 else -> ListItemPosition.MIDDLE
                             }
                             ExpressiveListItem(
                                 position = position,
-                                onClick = { onTypeSelected(type) }
+                                onClick = { onTypeSelected(deviceTypeInfo.type) }
                             ) {
-                                Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(42.dp))
-                                Text(text = label, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                                Icon(imageVector = deviceTypeInfo.icon, contentDescription = null, modifier = Modifier.size(42.dp))
+                                Text(text = deviceTypeInfo.label, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CarouselItemScope.BrandCard(
+    name: String,
+    icon: ImageVector? = null,
+    imageRes: Int? = null,
+    color: Color,
+    onClick: () -> Unit
+) {
+    val cardShape = RoundedCornerShape(28.dp)
+
+    Card(
+        modifier = Modifier
+            .fillMaxSize()
+            .maskClip(shape = cardShape)
+            .clickable { onClick() },
+        shape = cardShape,
+        colors = CardDefaults.cardColors(containerColor = color)
+    ) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+            if (imageRes != null) {
+                AsyncImage(
+                    model = imageRes,
+                    contentDescription = name,
+                    modifier = Modifier.fillMaxSize().padding(16.dp),
+                    contentScale = ContentScale.Fit
+                )
+            } else {
+                if (icon != null) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        modifier = Modifier.size(50.dp)
+                    )
+                } else {
+                    Text(
+                        text = name,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Black,
+                        color = MaterialTheme.colorScheme.primary
+                    )
                 }
             }
         }
@@ -156,26 +216,6 @@ fun BrandsScreen(
                     modifier = Modifier.clickable { onBrandSelected(brand) }
                 )
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-            }
-        }
-    }
-}
-
-@Composable
-fun BrandCard(name: String? = null, icon: ImageVector? = null, color: Color, onClick: () -> Unit) {
-    Surface(
-        modifier = Modifier
-            .width(180.dp)
-            .height(110.dp)
-            .clickable { onClick() },
-        shape = RoundedCornerShape(16.dp),
-        color = color
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            if (name != null) {
-                Text(text = name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black, color = Color(0xFF1A237E))
-            } else if (icon != null) {
-                Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(50.dp))
             }
         }
     }
@@ -516,7 +556,7 @@ fun SuggestRemoteFormScreen(
                     shape = RoundedCornerShape(20.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer)
                 ) {
-                    Icon(imageVector = Icons.AutoMirrored.Rounded.Send, contentDescription = null)
+                    Icon(Icons.AutoMirrored.Rounded.Send, contentDescription = null)
                     Spacer(Modifier.width(12.dp))
                     Text(text = "Enviar", style = MaterialTheme.typography.titleLarge)
                 }
@@ -712,6 +752,119 @@ fun SuccessScreen(
                 Icon(Icons.AutoMirrored.Rounded.ArrowForward, contentDescription = null)
                 Spacer(Modifier.width(12.dp))
                 Text(text = "Ir a Inicio", style = MaterialTheme.typography.titleLarge)
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AddGroupSheet(
+    newGroupName: String,
+    defaultGroups: List<String>,
+    onGroupNameChanged: (String) -> Unit,
+    onAddGroup: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surface,
+        dragHandle = { BottomSheetDefaults.DragHandle() },
+        contentWindowInsets = { WindowInsets(0.dp) }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .imePadding()
+                .navigationBarsPadding(),
+            verticalArrangement = Arrangement.spacedBy(24.dp)
+        ) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Surface(
+                    onClick = onDismiss,
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(imageVector = Icons.Rounded.ArrowBack, contentDescription = null)
+                    }
+                }
+                Text(
+                    text = "¿Cómo se llama el grupo que querés añadir?",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            // Custom Input
+            OutlinedTextField(
+                value = newGroupName,
+                onValueChange = onGroupNameChanged,
+                placeholder = { Text("Nombre del grupo") },
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.medium,
+                singleLine = true,
+                colors = OutlinedTextFieldDefaults.colors(
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                )
+            )
+
+            // Defaults List
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "PREDETERMINADOS",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                
+                defaultGroups.forEach { name ->
+                    val isSelected = newGroupName.equals(name, ignoreCase = true)
+                    Surface(
+                        onClick = { onGroupNameChanged(name) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(28.dp),
+                        color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+                    ) {
+                        Column {
+                            Text(
+                                text = name,
+                                modifier = Modifier.padding(16.dp),
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                            )
+                            if (!isSelected) {
+                                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Action
+            Button(
+                onClick = onAddGroup,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 32.dp)
+                    .height(80.dp),
+                shape = RoundedCornerShape(20.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            ) {
+                Icon(Icons.Rounded.Check, contentDescription = null)
+                Spacer(Modifier.width(12.dp))
+                Text(text = "Añadir grupo", style = MaterialTheme.typography.titleLarge)
             }
         }
     }

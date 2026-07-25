@@ -72,8 +72,14 @@ fun MiRemotitoTheme(
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            window.statusBarColor = colorScheme.surface.toArgb()
+            val argbColor = colorScheme.surface.toArgb()
+            
+            window.statusBarColor = argbColor
+            window.navigationBarColor = argbColor
+            window.decorView.setBackgroundColor(argbColor)
+            
             WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+            WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = !darkTheme
         }
     }
 

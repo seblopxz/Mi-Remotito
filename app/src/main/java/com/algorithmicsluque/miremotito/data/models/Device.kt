@@ -13,7 +13,7 @@ data class Device(
 )
 
 enum class DeviceType {
-    TV, AC, FAN, AUDIO, APPLE_TV
+    TV, AC, FAN, AUDIO, APPLE_TV, MONITOR, KITCHEN, SPEAKER
 }
 
 data class Room(

@@ -1,15 +1,20 @@
 package com.algorithmicsluque.miremotito.ui.setup
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Tv
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.algorithmicsluque.miremotito.R
 import com.algorithmicsluque.miremotito.data.models.Device
 import com.algorithmicsluque.miremotito.data.models.DeviceType
 import com.algorithmicsluque.miremotito.data.repository.DeviceRepository
+import com.algorithmicsluque.miremotito.data.network.RemoteApiService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
 sealed class SetupStep {
     object AddChoice : SetupStep()
@@ -25,6 +30,14 @@ sealed class SetupStep {
     object Success : SetupStep()
 }
 
+data class BrandInfo(
+    val name: String, 
+    val icon: ImageVector? = null,
+    val imageRes: Int? = null
+)
+
+data class DeviceTypeInfo(val label: String, val icon: ImageVector, val type: DeviceType)
+
 data class SuggestUiState(
     val selectedCategory: String = "TV", // TV, AC, Otros
     val brand: String = "",
@@ -38,17 +51,96 @@ data class SuggestUiState(
 
 data class SetupUiState(
     val currentStep: SetupStep = SetupStep.AddDevice,
+    val searchQuery: String = "",
     val selectedType: DeviceType? = null,
     val selectedBrand: String? = null,
     val newDeviceName: String = "",
     val newDeviceIcon: ImageVector = Icons.Rounded.Tv,
     val selectedRoom: String = "SALA DE ESTAR",
-    val suggestState: SuggestUiState = SuggestUiState()
+    val suggestState: SuggestUiState = SuggestUiState(),
+    val filteredBrands: List<BrandInfo> = emptyList(),
+    val filteredDeviceTypes: List<DeviceTypeInfo> = emptyList(),
+    val isLoadingBrands: Boolean = false,
+    val newGroupName: String = ""
 )
 
-class SetupViewModel : ViewModel() {
+class SetupViewModel(private val apiService: RemoteApiService? = null) : ViewModel() {
     private val _uiState = MutableStateFlow(SetupUiState())
     val uiState: StateFlow<SetupUiState> = _uiState.asStateFlow()
+
+    private var allBrands = listOf(
+        BrandInfo("SAMSUNG", imageRes = com.algorithmicsluque.miremotito.R.drawable.logo_samsung),
+        BrandInfo("Apple", imageRes = com.algorithmicsluque.miremotito.R.drawable.logo_apple),
+        BrandInfo("LG", imageRes = com.algorithmicsluque.miremotito.R.drawable.logo_lg),
+        BrandInfo("Philips", imageRes = com.algorithmicsluque.miremotito.R.drawable.logo_philips)
+    )
+
+    private val allDeviceTypes = listOf(
+        DeviceTypeInfo("TV", Icons.Rounded.Tv, DeviceType.TV),
+        DeviceTypeInfo("Ventilador", Icons.Rounded.Air, DeviceType.FAN),
+        DeviceTypeInfo("Barra de Sonido", Icons.Rounded.Speaker, DeviceType.AUDIO),
+        DeviceTypeInfo("Aire Acondicionado", Icons.Rounded.AcUnit, DeviceType.AC)
+    )
+
+    val defaultGroups = listOf("Habitación Principal", "Sala de Estar", "Garage", "Cocina")
+
+    init {
+        updateFilteredLists("")
+        fetchBrandsFromServer()
+    }
+
+    fun onGroupNameChanged(name: String) {
+        _uiState.update { it.copy(newGroupName = name) }
+    }
+
+    fun createGroup() {
+        val name = _uiState.value.newGroupName
+        if (name.isNotBlank()) {
+            DeviceRepository.addGroup(name)
+        }
+    }
+
+    private fun fetchBrandsFromServer() {
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(isLoadingBrands = true) }
+                val serverBrands = apiService?.getBrands()
+                if (!serverBrands.isNullOrEmpty()) {
+                    val newBrands = serverBrands.map { BrandInfo(it) }
+                    allBrands = (allBrands + newBrands).distinctBy { it.name.lowercase() }
+                    updateFilteredLists(_uiState.value.searchQuery)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("SetupViewModel", "Error fetching brands", e)
+            } finally {
+                _uiState.update { it.copy(isLoadingBrands = false) }
+            }
+        }
+    }
+
+    fun onSearchQueryChanged(query: String) {
+        _uiState.update { it.copy(searchQuery = query) }
+        updateFilteredLists(query)
+    }
+
+    private fun updateFilteredLists(query: String) {
+        val filteredBrands = if (query.isEmpty()) {
+            allBrands
+        } else {
+            allBrands.filter { it.name.contains(query, ignoreCase = true) }
+        }
+
+        val filteredTypes = if (query.isEmpty()) {
+            allDeviceTypes
+        } else {
+            allDeviceTypes.filter { it.label.contains(query, ignoreCase = true) }
+        }
+
+        _uiState.update { it.copy(
+            filteredBrands = filteredBrands,
+            filteredDeviceTypes = filteredTypes
+        ) }
+    }
 
     fun onStepChanged(step: SetupStep) {
         _uiState.value = _uiState.value.copy(currentStep = step)
@@ -104,15 +196,14 @@ class SetupViewModel : ViewModel() {
     }
 
     fun sendSuggestion() {
-        // Mock send action
-        android.util.Log.d("SetupViewModel", "Sending suggestion to sebastianald1234@gmail.com: ${_uiState.value.suggestState}")
+        android.util.Log.d("SetupViewModel", "Sending suggestion: ${_uiState.value.suggestState}")
     }
 
     fun completeSetup() {
         val state = _uiState.value
         val newDevice = Device(
             id = java.util.UUID.randomUUID().toString(),
-            name = state.newDeviceName.ifBlank { "${state.selectedBrand} ${state.selectedType}" },
+            name = state.newDeviceName.ifBlank { "${state.selectedBrand ?: ""} ${state.selectedType ?: "Dispositivo"}" },
             type = state.selectedType ?: DeviceType.TV,
             icon = state.newDeviceIcon,
             roomName = state.selectedRoom,
